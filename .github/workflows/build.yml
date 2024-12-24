@@ -26,20 +26,20 @@ jobs:
       if: github.event_name == 'push'
       uses: actions/upload-artifact@v3
       with:
-        name: snlncreceiver
-        path: dist/snlncreceiver
+        name: lncd
+        path: dist/lncd
 
     - name: Upload artifact on release
       if: github.event_name == 'release'
       uses: actions/upload-artifact@v3
       with:
-        name: snlncreceiver
-        path: dist/snlncreceiver
+        name: lncd
+        path: dist/lncd
 
     - name: Upload to GitHub Release
       if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
-        files: dist/snlncreceiver
+        files: dist/lncd
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

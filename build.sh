@@ -1,5 +1,5 @@
 #!/bin/bash
 script_dir=$(dirname $0)
-cd "$script_dir/snlncreceiver"
+cd "$script_dir/lncd"
 mkdir -p ../dist
-go build -o ../dist/snlncreceiver .
+go build -o ../dist/lncd .

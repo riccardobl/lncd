@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/grpclog"
 )
 
-const Subsystem = "SN"
+const Subsystem = "LNCD"
 
 var (
 	log btclog.Logger

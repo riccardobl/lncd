@@ -1,9 +1,9 @@
-# LNC *daemonized* Receiver 
+# LNC*Daemonized* 
 
 This is a Golang daemon that exposes lnc methods through a REST-like API, serving as a server-side alternative to lnc-web.
 
 Currently, it supports only the `lnrpc.Lightning methods`. 
-Additional methods can be easily registered in `snlncreceiver.go`.
+Additional methods can be easily registered in `lncd.go`.
 
 Lifecycle of LNC connections is managed. Connections are reused whenever possible and are automatically terminated after a period of inactivity.
 
@@ -18,3 +18,11 @@ Configuration options can be specified via environment variables (all are option
 | `LNC_DEBUG`             | `false`         | Flag to enable or disable debug logging.                                    |
 | `LNC_RECEIVER_PORT`     | `7167`          | Port on which the receiver server listens.                                  |
 | `LNC_RECEIVER_HOST`     | `0.0.0.0`       | Host address on which the receiver server listens.                          |
+
+
+
+## Intended scope
+
+This was developed to serve as the backend for stacker.news' LNC receive attachments. 
+It has only been tested with the `lnrpc.Lightning.AddInvoice` method, so if you plan to use this as a general-purpose LNC connector, ensure you test and review it accurately.
+
