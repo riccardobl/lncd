@@ -49,6 +49,8 @@ var (
 	LNC_LIMIT_ACTIVE_CONNECTIONS = getEnvAsInt("LNC_LIMIT_ACTIVE_CONNECTIONS", 210)
 	LNC_STATS_INTERVAL           = getEnvAsDuration("LNC_STATS_INTERVAL", 1*time.Minute)
 	LNC_DEBUG                    = getEnv("LNC_DEBUG", "false") == "true"
+	LNC_RECEIVER_PORT 		     = getEnv("LNC_RECEIVER_PORT", "7167")
+	LNC_RECEIVER_HOST 		     = getEnv("LNC_RECEIVER_HOST", "0.0.0.0")
 )
 
 // //////////////////////////////
@@ -468,8 +470,8 @@ func main() {
 	http.HandleFunc("/rpc", rpcHandler(pool))
 	http.HandleFunc("/", formHandler)
 
-	log.Infof("Server started at :7167")
-	if err := http.ListenAndServe(":7167", nil); err != nil {
+	log.Infof("Server started at "+LNC_RECEIVER_HOST+":" + LNC_RECEIVER_PORT)
+	if err := http.ListenAndServe(LNC_RECEIVER_HOST+":"+LNC_RECEIVER_PORT, nil); err != nil {
 		log.Errorf("Error starting server: %v", err)
 		exit(err)
 	}
