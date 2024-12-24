@@ -47,7 +47,7 @@ func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
 var (
 	LNC_TIMEOUT                  = getEnvAsDuration("LNC_TIMEOUT", 5*time.Minute)
 	LNC_LIMIT_ACTIVE_CONNECTIONS = getEnvAsInt("LNC_LIMIT_ACTIVE_CONNECTIONS", 210)
-	LNC_STATS_INTERVAL           = getEnvAsDuration("LNC_STATS_INTERVAL", 5*time.Minute)
+	LNC_STATS_INTERVAL           = getEnvAsDuration("LNC_STATS_INTERVAL", 1*time.Minute)
 	LNC_DEBUG                    = getEnv("LNC_DEBUG", "false") == "true"
 )
 
