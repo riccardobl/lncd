@@ -44,13 +44,22 @@ func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
+func getEnvAsBool(key string, defaultValue bool) bool {
+	valueStr := getEnv(key, "")
+	if value, err := strconv.ParseBool(valueStr); err == nil {
+		return value
+	}
+	return defaultValue
+}
+
+
 var (
-	LNC_TIMEOUT                  = getEnvAsDuration("LNC_TIMEOUT", 5*time.Minute)
-	LNC_LIMIT_ACTIVE_CONNECTIONS = getEnvAsInt("LNC_LIMIT_ACTIVE_CONNECTIONS", 210)
-	LNC_STATS_INTERVAL           = getEnvAsDuration("LNC_STATS_INTERVAL", 1*time.Minute)
-	LNC_DEBUG                    = getEnv("LNC_DEBUG", "false") == "true"
-	LNC_RECEIVER_PORT 		     = getEnv("LNC_RECEIVER_PORT", "7167")
-	LNC_RECEIVER_HOST 		     = getEnv("LNC_RECEIVER_HOST", "0.0.0.0")
+	LNCD_TIMEOUT                  = getEnvAsDuration("LNCD_TIMEOUT", 5*time.Minute)
+	LNCD_LIMIT_ACTIVE_CONNECTIONS = getEnvAsInt("LNCD_LIMIT_ACTIVE_CONNECTIONS", 210)
+	LNCD_STATS_INTERVAL           = getEnvAsDuration("LNCD_STATS_INTERVAL", 1*time.Minute)
+	LNCD_DEBUG                    = getEnvAsBool("LNCD_DEBUG", true)
+	LNCD_RECEIVER_PORT 		     = getEnv("LNCD_RECEIVER_PORT", "7167")
+	LNCD_RECEIVER_HOST 		     = getEnv("LNCD_RECEIVER_HOST", "0.0.0.0")
 )
 
 // //////////////////////////////
@@ -190,7 +199,7 @@ func (pool *ConnectionPool) execute(info ConnectionInfo, req Action) {
 			if USAFE_LOGS {
 				log.Debugf("Connection: %v", info)
 			}
-			if len(pool.connections) >= LNC_LIMIT_ACTIVE_CONNECTIONS {
+			if len(pool.connections) >= LNCD_LIMIT_ACTIVE_CONNECTIONS {
 				req.onError(fmt.Errorf("too many active connections"))
 				return true
 			}
@@ -198,7 +207,7 @@ func (pool *ConnectionPool) execute(info ConnectionInfo, req Action) {
 			if err != nil {
 				req.onError(err)
 			} else {
-				connection.timeoutTimer = time.AfterFunc(LNC_TIMEOUT, func() {
+				connection.timeoutTimer = time.AfterFunc(LNCD_TIMEOUT, func() {
 					pool.mutex.Lock()
 					if len(connection.actions) == 0 {
 						log.Infof("Closing idle connection %v", info.RemoteKey)
@@ -208,7 +217,7 @@ func (pool *ConnectionPool) execute(info ConnectionInfo, req Action) {
 						connection.Close()
 						delete(pool.connections, ConnectionKey{info.Mailbox, info.PairingPhrase})
 					} else {
-						connection.timeoutTimer.Reset(LNC_TIMEOUT)
+						connection.timeoutTimer.Reset(LNCD_TIMEOUT)
 					}
 					pool.mutex.Unlock()
 				})
@@ -267,7 +276,7 @@ func rpcHandler(pool *ConnectionPool) http.HandlerFunc {
 				close(done)
 			},
 			onResponse: func(info ConnectionInfo, result string) {
-				log.Infof("RPC response: %v", result)
+				log.Debugf("RPC response: %v", result)
 				if USAFE_LOGS {
 					log.Debugf("Connection: %v", info)
 				}
@@ -429,7 +438,7 @@ func exit(err error) {
 }
 
 func stats(pool *ConnectionPool) {
-	ticker := time.NewTicker(LNC_STATS_INTERVAL)
+	ticker := time.NewTicker(LNCD_STATS_INTERVAL)
 	go func() {
 		for range ticker.C {
 			pool.mutex.Lock()
@@ -456,13 +465,15 @@ func main() {
 		exit(err)
 	}
 	logWriter := build.NewRotatingLogWriter()
-	SetupLoggers(logWriter, shutdownInterceptor, LNC_DEBUG)
+	SetupLoggers(logWriter, shutdownInterceptor, LNCD_DEBUG)
 
 	log.Infof("Starting daemon")
-	log.Infof("LNC_TIMEOUT: %v", LNC_TIMEOUT)
-	log.Infof("LNC_LIMIT_ACTIVE_CONNECTIONS: %v", LNC_LIMIT_ACTIVE_CONNECTIONS)
-	log.Infof("LNC_STATS_INTERVAL: %v", LNC_STATS_INTERVAL)
-	log.Infof("LNC_DEBUG: %v", LNC_DEBUG)
+	log.Infof("LNCD_TIMEOUT: %v", LNCD_TIMEOUT)
+	log.Infof("LNCD_LIMIT_ACTIVE_CONNECTIONS: %v", LNCD_LIMIT_ACTIVE_CONNECTIONS)
+	log.Infof("LNCD_STATS_INTERVAL: %v", LNCD_STATS_INTERVAL)
+	log.Infof("LNCD_DEBUG: %v", LNCD_DEBUG)
+	log.Infof("LNCD_RECEIVER_PORT: %v", LNCD_RECEIVER_PORT)
+	log.Infof("LNCD_RECEIVER_HOST: %v", LNCD_RECEIVER_HOST)
 
 	var pool *ConnectionPool = NewConnectionPool()
 	stats(pool)
@@ -470,8 +481,8 @@ func main() {
 	http.HandleFunc("/rpc", rpcHandler(pool))
 	http.HandleFunc("/", formHandler)
 
-	log.Infof("Server started at "+LNC_RECEIVER_HOST+":" + LNC_RECEIVER_PORT)
-	if err := http.ListenAndServe(LNC_RECEIVER_HOST+":"+LNC_RECEIVER_PORT, nil); err != nil {
+	log.Infof("Server started at "+LNCD_RECEIVER_HOST+":" + LNCD_RECEIVER_PORT)
+	if err := http.ListenAndServe(LNCD_RECEIVER_HOST+":"+LNCD_RECEIVER_PORT, nil); err != nil {
 		log.Errorf("Error starting server: %v", err)
 		exit(err)
 	}
