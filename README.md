@@ -82,3 +82,10 @@ RESPONSE
 
 
 ```
+
+
+## Endpoints
+
+- POST http://localhost:7167/rpc : Send a request and get a response from the LNC server.
+- GET http://localhost:7167/ : Web UI to test the /rpc endpoint.
+- GET http://localhost:7167/health : Health check endpoint.
