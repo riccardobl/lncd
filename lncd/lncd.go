@@ -118,6 +118,8 @@ type RpcRequest struct {
 type RpcResponse struct {
 	Connection ConnectionInfo
 	Result     string
+	err	       error
+	errCode    int
 }
 
 func NewConnectionPool() *ConnectionPool {
@@ -305,52 +307,68 @@ func (pool *ConnectionPool) execute(info ConnectionInfo, req Action) {
 	}
 }
 
+func writeJSONError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(statusCode)
+    json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
 func rpcHandler(pool *ConnectionPool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-			return
-		}
 		var request RpcRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
-			return
-		}
 		defer r.Body.Close()
 
-		done := make(chan struct{})
+		if r.Method != http.MethodPost {
+			writeJSONError(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			writeJSONError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
 
 		log.Infof("Incoming RPC request: %v", request.Method)
 		if UNSAFE_LOGS {
 			log.Debugf("Full request: %v", request)
 		}
+		
+		var waitResponse chan RpcResponse = make(chan RpcResponse)
 
-		var response RpcResponse
 		pool.execute(request.Connection, Action{
 			method:  request.Method,
 			payload: request.Payload,
 			onError: func(err error) {
-				log.Errorf("RPC error: %v", err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				close(done)
+				waitResponse <- RpcResponse{err: err, errCode: http.StatusInternalServerError}
+				close(waitResponse)
 			},
 			onResponse: func(info ConnectionInfo, result string) {
 				log.Debugf("RPC response: %v", result)
 				if UNSAFE_LOGS {
 					log.Debugf("Connection: %v", info)
 				}
-				response = RpcResponse{
+				waitResponse <- RpcResponse{
 					Connection: info,
 					Result:     result,
+					err:        nil,
+					errCode:    http.StatusOK,
 				}
-				close(done)
+				close(waitResponse)
 			},
 		})
 
-		<-done
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		var resp RpcResponse = <-waitResponse
+		if resp.err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				resp.err = err
+				resp.errCode = http.StatusInternalServerError
+			}
+		}
+
+		if resp.err != nil {
+			writeJSONError(w, resp.err.Error(), resp.errCode)
 		}
 	}
 }
@@ -420,27 +438,6 @@ func parseKeys(localPrivKey, remotePubKey string) (
 
 
 
-func stats(pool *ConnectionPool) {
-	ticker := time.NewTicker(LNCD_STATS_INTERVAL)
-	go func() {
-		for range ticker.C {
-			pool.mutex.Lock()
-			numConnections := len(pool.connections)
-			log.Infof("Number of active connections: %d", numConnections)
-
-			index := 0
-			for _, conn := range pool.connections {
-				log.Infof("Connection %d", index)
-				pendingActions := len(conn.actions)
-				log.Infof("    Pending actions: %d", pendingActions)
-				log.Infof("    Connection status: %v", conn.connInfo.Status)
-				index++
-			}
-			pool.mutex.Unlock()
-		}
-	}()
-}
-
 
 func main() {
 	shutdownInterceptor, err := signal.Intercept()
@@ -463,10 +460,11 @@ func main() {
 	}
 
 	var pool *ConnectionPool = NewConnectionPool()
-	stats(pool)
+	startStatsLoop(pool)
 
 	http.HandleFunc("/rpc", rpcHandler(pool))
 	http.HandleFunc("/", formHandler)
+	http.HandleFunc("/health", healthCheckHandler)
 
 	log.Infof("Server started at "+LNCD_RECEIVER_HOST+":" + LNCD_RECEIVER_PORT)
 	if err := http.ListenAndServe(LNCD_RECEIVER_HOST+":"+LNCD_RECEIVER_PORT, nil); err != nil {
