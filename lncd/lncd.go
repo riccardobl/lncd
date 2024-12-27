@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/signal"
 	"google.golang.org/grpc"
+	"gopkg.in/macaroon.v2"
 )
 
 func getEnv(key string, defaultValue string) string {
@@ -57,16 +60,16 @@ var (
 	LNCD_TIMEOUT                  = getEnvAsDuration("LNCD_TIMEOUT", 5*time.Minute)
 	LNCD_LIMIT_ACTIVE_CONNECTIONS = getEnvAsInt("LNCD_LIMIT_ACTIVE_CONNECTIONS", 210)
 	LNCD_STATS_INTERVAL           = getEnvAsDuration("LNCD_STATS_INTERVAL", 1*time.Minute)
-	LNCD_DEBUG                    = getEnvAsBool("LNCD_DEBUG", true)
-	LNCD_RECEIVER_PORT 		     = getEnv("LNCD_RECEIVER_PORT", "7167")
-	LNCD_RECEIVER_HOST 		     = getEnv("LNCD_RECEIVER_HOST", "0.0.0.0")
+	LNCD_DEBUG                    = getEnvAsBool("LNCD_DEBUG", false)
+	LNCD_RECEIVER_PORT 		      = getEnv("LNCD_RECEIVER_PORT", "7167")
+	LNCD_RECEIVER_HOST 		      = getEnv("LNCD_RECEIVER_HOST", "0.0.0.0")
 )
 
 // //////////////////////////////
 // DEBUG LOGS for secrets
 // Never turn this on in production or it will leak user
 // secrets to the stdout, that is undesirable.
-var USAFE_LOGS = false
+var UNSAFE_LOGS = getEnvAsBool("LNCD_DEV_UNSAFE_LOG", false)
 
 ////////////////////////////////
 
@@ -76,6 +79,7 @@ type ConnectionInfo struct {
 	LocalKey      string
 	RemoteKey     string
 	Status        string
+	macaroon      *macaroon.Macaroon
 }
 
 type ConnectionKey struct {
@@ -97,6 +101,7 @@ type Connection struct {
 	registry     map[string]func(context.Context, *grpc.ClientConn, string, func(string, error))
 	pool         *ConnectionPool
 	timeoutTimer *time.Timer
+	perms   	  *PermissionManager
 }
 
 type ConnectionPool struct {
@@ -138,6 +143,26 @@ func NewConnection(pool *ConnectionPool, info ConnectionInfo) (*Connection, erro
 			info.RemoteKey = hex.EncodeToString(key.SerializeCompressed())
 			return nil
 		}, func(data []byte) error {
+			parts := strings.Split(string(data), ": ")
+			if len(parts) != 2 || parts[0] != "Macaroon" {
+				log.Errorf("authdata does not contain a macaroon")
+				return errors.New("authdata does not contain a macaroon")
+			}
+
+			macBytes, err := hex.DecodeString(parts[1])
+			if err != nil {
+				return err
+			}
+
+			mac := &macaroon.Macaroon{}
+			err = mac.UnmarshalBinary(macBytes)
+			if err != nil {
+				log.Errorf("unable to decode macaroon: %v", err)
+				return err
+			}
+
+			info.macaroon = mac
+	
 			return nil
 		},
 	)
@@ -161,25 +186,59 @@ func NewConnection(pool *ConnectionPool, info ConnectionInfo) (*Connection, erro
 		registry:   make(map[string]func(context.Context, *grpc.ClientConn, string, func(string, error))),
 		pool:       pool,
 	}
+
+	connection.perms, err = NewPermissionManager(connection)
+	if err != nil {
+		return nil, err
+	}
+
 	lnrpc.RegisterLightningJSONCallbacks(connection.registry)
 	return connection, nil
 }
 
 func (conn *Connection) runLoop() {
 	for req := range conn.actions {
-		var method, ok = conn.registry[req.method]
-		if ok {
-			log.Infof("Executing method: %v", req.method)
-			if USAFE_LOGS {
-				log.Debugf("Execution: %v %v %v", conn.connInfo, req.method, req.payload)
-			}
-			method(context.Background(), conn.grpcClient, req.payload, func(resultJSON string, err error) {
+		if req.method == "checkPerms" {
+			log.Debugf("Checking permissions for: %v", req.payload)			
+			perms := []string{};
+			err := json.Unmarshal([]byte(req.payload), &perms);
+			if err != nil {
+				req.onError(err);
+			} else {
+				var valid []bool = make([]bool, len(perms))
+				for i, perm := range perms {
+					allowed, err := conn.perms.check(perm)
+					if err != nil {
+						log.Errorf("Error checking permission: %v", err)
+						valid[i] = false
+					} else {
+						valid[i] = allowed
+					}
+				}
+
+				result, err := json.Marshal(valid)
 				if err != nil {
 					req.onError(err)
 				} else {
-					req.onResponse(conn.connInfo, resultJSON)
+					req.onResponse(conn.connInfo, string(result))
 				}
-			})
+
+			}
+		} else {
+			var methodFunc, ok = conn.registry[req.method]
+			if ok {
+				log.Infof("Executing method: %v", req.method)
+				if UNSAFE_LOGS {
+					log.Debugf("Execution: %v %v %v", conn.connInfo, req.method, req.payload)
+				}
+				methodFunc(context.Background(), conn.grpcClient, req.payload, func(resultJSON string, err error) {
+					if err != nil {
+						req.onError(err)
+					} else {
+						req.onResponse(conn.connInfo, resultJSON)
+					}
+				})	
+			}
 		}
 	}
 }
@@ -196,7 +255,7 @@ func (pool *ConnectionPool) execute(info ConnectionInfo, req Action) {
 		connection, ok := pool.connections[key]
 		if !ok {
 			log.Infof("Creating new connection")
-			if USAFE_LOGS {
+			if UNSAFE_LOGS {
 				log.Debugf("Connection: %v", info)
 			}
 			if len(pool.connections) >= LNCD_LIMIT_ACTIVE_CONNECTIONS {
@@ -211,7 +270,7 @@ func (pool *ConnectionPool) execute(info ConnectionInfo, req Action) {
 					pool.mutex.Lock()
 					if len(connection.actions) == 0 {
 						log.Infof("Closing idle connection %v", info.RemoteKey)
-						if USAFE_LOGS {
+						if UNSAFE_LOGS {
 							log.Debugf("Connection: %v", info)
 						}
 						connection.Close()
@@ -226,7 +285,7 @@ func (pool *ConnectionPool) execute(info ConnectionInfo, req Action) {
 			}
 		} else {
 			log.Infof("Reusing existing connection")
-			if USAFE_LOGS {
+			if UNSAFE_LOGS {
 				log.Debugf("Connection: %v", info)
 			}
 		}
@@ -262,7 +321,7 @@ func rpcHandler(pool *ConnectionPool) http.HandlerFunc {
 		done := make(chan struct{})
 
 		log.Infof("Incoming RPC request: %v", request.Method)
-		if USAFE_LOGS {
+		if UNSAFE_LOGS {
 			log.Debugf("Full request: %v", request)
 		}
 
@@ -277,7 +336,7 @@ func rpcHandler(pool *ConnectionPool) http.HandlerFunc {
 			},
 			onResponse: func(info ConnectionInfo, result string) {
 				log.Debugf("RPC response: %v", result)
-				if USAFE_LOGS {
+				if UNSAFE_LOGS {
 					log.Debugf("Connection: %v", info)
 				}
 				response = RpcResponse{
@@ -294,79 +353,6 @@ func rpcHandler(pool *ConnectionPool) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}
-}
-
-func formHandler(w http.ResponseWriter, r *http.Request) {
-	html := `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>RPC Form</title>
-            <script>
-                function submitForm(event) {
-                    event.preventDefault();
-                    const form = event.target;
-					const response = document.getElementById('response');
-                    const data = {
-                        Connection: {
-                            Mailbox: form.mailbox.value,
-                            PairingPhrase: form.pairingPhrase.value,
-                            LocalKey: form.localKey.value,
-                            RemoteKey: form.remoteKey.value
-                        },
-                        Method: form.method.value,
-                        Payload: form.payload.value
-                    };
-                    fetch('/rpc', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(data)
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log('Success:', data);
-						response.innerHTML = JSON.stringify(data, null, 2);
-                    })
-                    .catch((error) => {
-                        console.error('Error:', error);
-						response.innerHTML = error;
-                    });
-                }
-            </script>
-			<style>
-				input,textarea{ 
-				 	width: 90vw;
-				}
-				textarea {
-					height: 20vh;
-				}
-			</style>
-        </head>
-        <body>
-            <h1>RPC Form</h1>
-            <form onsubmit="submitForm(event)">
-                <label for="mailbox">Mailbox:</label><br>
-                <input value="mailbox.terminal.lightning.today:443" type="text" id="mailbox" name="mailbox"><br>
-                <label for="pairingPhrase">Pairing Phrase:</label><br>
-                <input type="text" id="pairingPhrase" name="pairingPhrase"><br>
-                <label for="localKey">Local Key:</label><br>
-                <input type="text" id="localKey" name="localKey"><br>
-                <label for="remoteKey">Remote Key:</label><br>
-                <input type="text" id="remoteKey" name="remoteKey"><br>
-                <label for="method">Method:</label><br>
-                <input value="lnrpc.Lightning.AddInvoice" type="text" id="method" name="method"><br>
-                <label for="payload">Payload:</label><br>
-                <textarea  id="payload" name="payload">{"memo":"test","value":1000}</textarea><br>
-                <input type="submit" value="Submit">
-            </form>
-			<pre id="response"></pre>
-        </body>
-        </html>
-    `
-	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
 }
 
 func parseKeys(localPrivKey, remotePubKey string) (
@@ -386,7 +372,7 @@ func parseKeys(localPrivKey, remotePubKey string) (
 			return nil, nil, err
 		}
 		localStaticKey = privKey
-		if USAFE_LOGS {
+		if UNSAFE_LOGS {
 			log.Debugf("Generated new priv key: %v", hex.EncodeToString(privKey.Serialize()))
 		}
 
@@ -398,7 +384,7 @@ func parseKeys(localPrivKey, remotePubKey string) (
 		}
 		privKey, _ := btcec.PrivKeyFromBytes(privKeyByte)
 		localStaticKey = privKey
-		if USAFE_LOGS {
+		if UNSAFE_LOGS {
 			log.Debugf("Parsed local priv key: %v", hex.EncodeToString(privKey.Serialize()))
 		}
 
@@ -423,7 +409,7 @@ func parseKeys(localPrivKey, remotePubKey string) (
 			return nil, nil, err
 		}
 
-		if USAFE_LOGS {
+		if UNSAFE_LOGS {
 			log.Debugf("Parsed local priv key: %v", hex.EncodeToString(privKey.Serialize()))
 			log.Debugf("Parsed remote pub key: %v", hex.EncodeToString(remoteStaticKey.SerializeCompressed()))
 		}
@@ -432,10 +418,7 @@ func parseKeys(localPrivKey, remotePubKey string) (
 	return localStaticKey, remoteStaticKey, nil
 }
 
-func exit(err error) {
-	fmt.Printf("Error running daemon: %v\n", err)
-	os.Exit(1)
-}
+
 
 func stats(pool *ConnectionPool) {
 	ticker := time.NewTicker(LNCD_STATS_INTERVAL)
@@ -456,8 +439,8 @@ func stats(pool *ConnectionPool) {
 			pool.mutex.Unlock()
 		}
 	}()
-
 }
+
 
 func main() {
 	shutdownInterceptor, err := signal.Intercept()
@@ -474,6 +457,10 @@ func main() {
 	log.Infof("LNCD_DEBUG: %v", LNCD_DEBUG)
 	log.Infof("LNCD_RECEIVER_PORT: %v", LNCD_RECEIVER_PORT)
 	log.Infof("LNCD_RECEIVER_HOST: %v", LNCD_RECEIVER_HOST)
+	log.Debugf("debug enabled")
+	if UNSAFE_LOGS {
+		log.Infof("!!! UNSAFE LOGGING ENABLED !!!")
+	}
 
 	var pool *ConnectionPool = NewConnectionPool()
 	stats(pool)
@@ -494,4 +481,9 @@ func main() {
 	}
 	log.Infof("Shutdown complete")
 
+}
+
+func exit(err error) {
+	fmt.Printf("Error running daemon: %v\n", err)
+	os.Exit(1)
 }

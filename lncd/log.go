@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/btcsuite/btclog"
 	"github.com/lightninglabs/lightning-node-connect/gbn"
 	"github.com/lightninglabs/lightning-node-connect/mailbox"
@@ -22,8 +24,10 @@ func SetupLoggers(root *build.RotatingLogWriter, intercept signal.Interceptor, d
 
 	log = build.NewSubLogger(Subsystem, genLogger)
 	if debug {
+		fmt.Println("Setting log level to trace")
 		log.SetLevel(btclog.LevelTrace)
 	} else {
+		fmt.Println("Setting log level to info")
 		log.SetLevel(btclog.LevelInfo)
 	}
 

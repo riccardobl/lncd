@@ -1,0 +1,1 @@
+export RPC_TAGS="appengine autopilotrpc chainrpc invoicesrpc neutrinorpc peersrpc signrpc wtclientrpc watchtowerrpc routerrpc walletrpc verrpc"
