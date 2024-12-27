@@ -59,13 +59,13 @@ func startStatsLoop(pool *ConnectionPool) {
 			
 			if lastStats != nil {
 				var statsString string = ""
-				statsString += fmt.Sprintf("Active connections: %d\n", lastStats.NumConnections)
+				statsString += fmt.Sprintf("\nActive connections: %d", lastStats.NumConnections)
 				for i, conn := range lastStats.Connections {
-					statsString += fmt.Sprintf("    Connection id: %d\n", i)
-					statsString += fmt.Sprintf("        Pending actions: %d\n", conn.NumPendingActions)
-					statsString += fmt.Sprintf("        Status: %s", conn.Status)
+					statsString += fmt.Sprintf("\n    Connection id: %d", i)
+					statsString += fmt.Sprintf("\n        Pending actions: %d", conn.NumPendingActions)
+					statsString += fmt.Sprintf("\n        Status: %s", conn.Status)
 				}
-				log.Debugf("Stats:\n %s", statsString)
+				log.Debugf("Stats: %s", statsString)
 			}
 		}
 	}()
