@@ -64,7 +64,7 @@ POST /rpc
         "PairingPhrase": "...."        
     },
 	"Method": "lnrpc.Lightning.AddInvoice"
-	"Payload": "{\"memo\":\"test\",\"value\":1000}"
+	"Payload": "{\"memo\":\"test\",\"valueMsat\":1000}"
 }
 
 
