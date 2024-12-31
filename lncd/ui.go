@@ -13,6 +13,7 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
                     event.preventDefault();
                     const form = event.target;
 					const response = document.getElementById('response');
+                    const authToken = form.authtoken.value;
                     const data = {
                         Connection: {
                             Mailbox: form.mailbox.value,
@@ -26,7 +27,8 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
                     fetch('/rpc', {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + authToken
                         },
                         body: JSON.stringify(data)
                     })
@@ -53,6 +55,8 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
         <body>
             <h1>LNCD Test Form</h1>
             <form onsubmit="submitForm(event)">
+                <label for="mailbox">AuthToken:</label><br>
+                <input value="" type="text" id="authtoken" name="authtoken"><br>
                 <label for="mailbox">Mailbox:</label><br>
                 <input value="mailbox.terminal.lightning.today:443" type="text" id="mailbox" name="mailbox"><br>
                 <label for="pairingPhrase">Pairing Phrase:</label><br>

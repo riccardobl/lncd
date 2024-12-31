@@ -61,8 +61,11 @@ var (
 	LNCD_LIMIT_ACTIVE_CONNECTIONS = getEnvAsInt("LNCD_LIMIT_ACTIVE_CONNECTIONS", 210)
 	LNCD_STATS_INTERVAL           = getEnvAsDuration("LNCD_STATS_INTERVAL", 1*time.Minute)
 	LNCD_DEBUG                    = getEnvAsBool("LNCD_DEBUG", false)
-	LNCD_RECEIVER_PORT 		      = getEnv("LNCD_RECEIVER_PORT", "7167")
-	LNCD_RECEIVER_HOST 		      = getEnv("LNCD_RECEIVER_HOST", "0.0.0.0")
+	LNCD_PORT 		              = getEnv("LNCD_PORT", "7167")
+	LNCD_HOST 		              = getEnv("LNCD_HOST", "0.0.0.0")
+	LNCD_AUTH_TOKEN               = getEnv("LNCD_AUTH_TOKEN", "")
+	LNCD_TLS_CERT_PATH            = getEnv("LNCD_TLS_CERT_PATH", "")
+	LNCD_TLS_KEY_PATH             = getEnv("LNCD_TLS_KEY_PATH", "")
 )
 
 // //////////////////////////////
@@ -436,8 +439,23 @@ func parseKeys(localPrivKey, remotePubKey string) (
 	return localStaticKey, remoteStaticKey, nil
 }
 
-
-
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+		if LNCD_AUTH_TOKEN != "" {
+			authHeader := r.Header.Get("Authorization")
+			if !strings.HasPrefix(authHeader, "Bearer ") {
+				writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+        	token := strings.TrimPrefix(authHeader, "Bearer ")
+        	if token != LNCD_AUTH_TOKEN {
+            	writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
+            	return
+        	}
+		}
+        next.ServeHTTP(w, r)
+    }
+}
 
 func main() {
 	shutdownInterceptor, err := signal.Intercept()
@@ -452,24 +470,37 @@ func main() {
 	log.Infof("LNCD_LIMIT_ACTIVE_CONNECTIONS: %v", LNCD_LIMIT_ACTIVE_CONNECTIONS)
 	log.Infof("LNCD_STATS_INTERVAL: %v", LNCD_STATS_INTERVAL)
 	log.Infof("LNCD_DEBUG: %v", LNCD_DEBUG)
-	log.Infof("LNCD_RECEIVER_PORT: %v", LNCD_RECEIVER_PORT)
-	log.Infof("LNCD_RECEIVER_HOST: %v", LNCD_RECEIVER_HOST)
-	log.Debugf("debug enabled")
+	log.Infof("LNCD_PORT: %v", LNCD_PORT)
+	log.Infof("LNCD_HOST: %v", LNCD_HOST)
+	log.Infof("LNCD_TLS_CERT_PATH: %v", LNCD_TLS_CERT_PATH)
+	log.Infof("LNCD_TLS_KEY_PATH: %v", LNCD_TLS_KEY_PATH)
+
 	if UNSAFE_LOGS {
+		log.Info("LNCD_AUTH_TOKEN: %v", LNCD_AUTH_TOKEN)
 		log.Infof("!!! UNSAFE LOGGING ENABLED !!!")
 	}
+	log.Debugf("debug enabled")
 
 	var pool *ConnectionPool = NewConnectionPool()
 	startStatsLoop(pool)
 
-	http.HandleFunc("/rpc", rpcHandler(pool))
+	http.HandleFunc("/rpc", authMiddleware(rpcHandler(pool)))
+	http.HandleFunc("/health", authMiddleware(healthCheckHandler))
 	http.HandleFunc("/", formHandler)
-	http.HandleFunc("/health", healthCheckHandler)
 
-	log.Infof("Server started at "+LNCD_RECEIVER_HOST+":" + LNCD_RECEIVER_PORT)
-	if err := http.ListenAndServe(LNCD_RECEIVER_HOST+":"+LNCD_RECEIVER_PORT, nil); err != nil {
-		log.Errorf("Error starting server: %v", err)
-		exit(err)
+	log.Infof("Server starting at "+LNCD_HOST+":" + LNCD_PORT)	
+	var isTLS = LNCD_TLS_CERT_PATH != "" && LNCD_TLS_KEY_PATH != ""
+	if isTLS {
+		log.Infof("TLS enabled")
+		if err := http.ListenAndServeTLS(LNCD_HOST+":"+LNCD_PORT, LNCD_TLS_CERT_PATH, LNCD_TLS_KEY_PATH, nil); err != nil {
+			log.Errorf("Error starting server: %v", err)
+			exit(err)
+		}
+	} else {
+		if err := http.ListenAndServe(LNCD_HOST+":"+LNCD_PORT, nil); err != nil {
+			log.Errorf("Error starting server: %v", err)
+			exit(err)
+		}
 	}
 
 	<-shutdownInterceptor.ShutdownChannel()

@@ -16,8 +16,11 @@ Configuration options can be specified via environment variables (all are option
 | `LNCD_LIMIT_ACTIVE_CONNECTIONS` | `210`           | Maximum number of active connections allowed.                               |
 | `LNCD_STATS_INTERVAL`    | `1m` | Interval for logging connection pool statistics.                            |
 | `LNCD_DEBUG`             | `false`         | Flag to enable or disable debug logging.                                    |
-| `LNCD_RECEIVER_PORT`     | `7167`          | Port on which the receiver server listens.                                  |
-| `LNCD_RECEIVER_HOST`     | `0.0.0.0`       | Host address on which the receiver server listens.                          |
+| `LNCD_PORT`     | `7167`          | Port on which the  server listens.                                  |
+| `LNCD_HOST`     | `0.0.0.0`       | Host address on which the server listens.                          |
+| `LNCD_TLS_CERT_PATH`    | `""`            | Path to the TLS certificate file (empty to disable TLS).                   |
+| `LNCD_TLS_KEY_PATH`     | `""`            | Path to the TLS key file (empty to disable TLS).                           |
+| `LNCD_AUTH_TOKEN`       | `""`            | Bearer token required to access the server (empty to disable authentication). |
 | `LNCD_DEV_UNSAFE_LOG`    | `false`         | Enable or disable logging of sensitive data.                       |
 
 
