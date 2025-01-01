@@ -476,7 +476,7 @@ func main() {
 	log.Infof("LNCD_TLS_KEY_PATH: %v", LNCD_TLS_KEY_PATH)
 
 	if UNSAFE_LOGS {
-		log.Info("LNCD_AUTH_TOKEN: %v", LNCD_AUTH_TOKEN)
+		log.Infof("LNCD_AUTH_TOKEN: %v", LNCD_AUTH_TOKEN)
 		log.Infof("!!! UNSAFE LOGGING ENABLED !!!")
 	}
 	log.Debugf("debug enabled")
