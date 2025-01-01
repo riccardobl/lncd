@@ -57,15 +57,17 @@ func getEnvAsBool(key string, defaultValue bool) bool {
 
 
 var (
-	LNCD_TIMEOUT                  = getEnvAsDuration("LNCD_TIMEOUT", 5*time.Minute)
-	LNCD_LIMIT_ACTIVE_CONNECTIONS = getEnvAsInt("LNCD_LIMIT_ACTIVE_CONNECTIONS", 210)
-	LNCD_STATS_INTERVAL           = getEnvAsDuration("LNCD_STATS_INTERVAL", 1*time.Minute)
-	LNCD_DEBUG                    = getEnvAsBool("LNCD_DEBUG", false)
-	LNCD_PORT 		              = getEnv("LNCD_PORT", "7167")
-	LNCD_HOST 		              = getEnv("LNCD_HOST", "0.0.0.0")
-	LNCD_AUTH_TOKEN               = getEnv("LNCD_AUTH_TOKEN", "")
-	LNCD_TLS_CERT_PATH            = getEnv("LNCD_TLS_CERT_PATH", "")
-	LNCD_TLS_KEY_PATH             = getEnv("LNCD_TLS_KEY_PATH", "")
+	LNCD_TIMEOUT                      = getEnvAsDuration("LNCD_TIMEOUT", 5*time.Minute)
+	LNCD_LIMIT_ACTIVE_CONNECTIONS     = getEnvAsInt("LNCD_LIMIT_ACTIVE_CONNECTIONS", 210)
+	LNCD_STATS_INTERVAL               = getEnvAsDuration("LNCD_STATS_INTERVAL", 1*time.Minute)
+	LNCD_DEBUG                        = getEnvAsBool("LNCD_DEBUG", false)
+	LNCD_PORT 		                  = getEnv("LNCD_PORT", "7167")
+	LNCD_HOST 		                  = getEnv("LNCD_HOST", "0.0.0.0")
+	LNCD_AUTH_TOKEN                   = getEnv("LNCD_AUTH_TOKEN", "")
+	LNCD_TLS_CERT_PATH                = getEnv("LNCD_TLS_CERT_PATH", "")
+	LNCD_TLS_KEY_PATH                 = getEnv("LNCD_TLS_KEY_PATH", "")
+	LNCD_HEALTHCHECK_SERVICE_PORT	  = getEnv("LNCD_HEALTHCHECK_SERVICE_PORT", "7168")
+	LNCD_HEALTHCHECK_SERVICE_HOST	  = getEnv("LNCD_HEALTHCHECK_SERVICE_HOST", "127.0.0.1")
 )
 
 // //////////////////////////////
@@ -474,7 +476,9 @@ func main() {
 	log.Infof("LNCD_HOST: %v", LNCD_HOST)
 	log.Infof("LNCD_TLS_CERT_PATH: %v", LNCD_TLS_CERT_PATH)
 	log.Infof("LNCD_TLS_KEY_PATH: %v", LNCD_TLS_KEY_PATH)
-
+	log.Infof("LNCD_HEALTHCHECK_SERVICE_PORT: %v", LNCD_HEALTHCHECK_SERVICE_PORT)
+	log.Infof("LNCD_HEALTHCHECK_SERVICE_HOST: %v", LNCD_HEALTHCHECK_SERVICE_HOST)
+	
 	if UNSAFE_LOGS {
 		log.Infof("LNCD_AUTH_TOKEN: %v", LNCD_AUTH_TOKEN)
 		log.Infof("!!! UNSAFE LOGGING ENABLED !!!")
@@ -488,20 +492,36 @@ func main() {
 	http.HandleFunc("/health", authMiddleware(healthCheckHandler))
 	http.HandleFunc("/", formHandler)
 
-	log.Infof("Server starting at "+LNCD_HOST+":" + LNCD_PORT)	
-	var isTLS = LNCD_TLS_CERT_PATH != "" && LNCD_TLS_KEY_PATH != ""
-	if isTLS {
-		log.Infof("TLS enabled")
-		if err := http.ListenAndServeTLS(LNCD_HOST+":"+LNCD_PORT, LNCD_TLS_CERT_PATH, LNCD_TLS_KEY_PATH, nil); err != nil {
-			log.Errorf("Error starting server: %v", err)
-			exit(err)
+	go func() {
+		log.Infof("Server starting at "+LNCD_HOST+":" + LNCD_PORT)	
+		var isTLS = LNCD_TLS_CERT_PATH != "" && LNCD_TLS_KEY_PATH != ""
+		if isTLS {
+			log.Infof("TLS enabled")
+			if err := http.ListenAndServeTLS(LNCD_HOST+":"+LNCD_PORT, LNCD_TLS_CERT_PATH, LNCD_TLS_KEY_PATH, nil); err != nil {
+				log.Errorf("Error starting server: %v", err)
+				exit(err)
+			}
+		} else {
+			if err := http.ListenAndServe(LNCD_HOST+":"+LNCD_PORT, nil); err != nil {
+				log.Errorf("Error starting server: %v", err)
+				exit(err)
+			}
 		}
-	} else {
-		if err := http.ListenAndServe(LNCD_HOST+":"+LNCD_PORT, nil); err != nil {
-			log.Errorf("Error starting server: %v", err)
-			exit(err)
-		}
-	}
+	}()
+
+	
+	if LNCD_HEALTHCHECK_SERVICE_HOST != "" && LNCD_HEALTHCHECK_SERVICE_PORT != "" {
+        go func() {
+			log.Infof("HealthCheck service starting at "+LNCD_HEALTHCHECK_SERVICE_HOST+":" + LNCD_HEALTHCHECK_SERVICE_PORT)	            
+			var rawHealthMux *http.ServeMux = http.NewServeMux()
+            rawHealthMux.HandleFunc("/health", healthCheckHandler)
+            if err := http.ListenAndServe(LNCD_HEALTHCHECK_SERVICE_HOST + ":" + LNCD_HEALTHCHECK_SERVICE_PORT, rawHealthMux); err != nil {
+                log.Errorf("Error starting HealthCheck server: %v", err)
+                exit(err)
+            }
+        }()
+    }
+
 
 	<-shutdownInterceptor.ShutdownChannel()
 	log.Infof("Shutting down daemon")
