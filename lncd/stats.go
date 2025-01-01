@@ -28,7 +28,7 @@ func refreshStats(pool *ConnectionPool, stats *Stats) *Stats {
 			NumConnections: 0,
 			Connections:    nil,
 		}
-	} 
+	}
 
 	stats.NumConnections = len(pool.connections)
 	if stats.Connections == nil || len(stats.Connections) != len(pool.connections) {
@@ -56,7 +56,7 @@ func startStatsLoop(pool *ConnectionPool) {
 	go func() {
 		for range ticker.C {
 			lastStats = refreshStats(pool, lastStats)
-			
+
 			if lastStats != nil {
 				var statsString string = ""
 				statsString += fmt.Sprintf("\nActive connections: %d", lastStats.NumConnections)
@@ -70,5 +70,3 @@ func startStatsLoop(pool *ConnectionPool) {
 		}
 	}()
 }
-
-

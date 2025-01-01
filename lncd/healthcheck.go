@@ -7,10 +7,9 @@ import (
 )
 
 type HealthStatus struct {
-	Status string `json:"status"`
-	Stats Stats 
+	Status  string `json:"status"`
+	Stats   Stats
 	Message string `json:"message"`
-	
 }
 
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
@@ -23,8 +22,8 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		w.Header().Set("Content-Type", "application/json")
 		err = json.NewEncoder(w).Encode(HealthStatus{
-			Status: "OK",
-			Stats: *stats,
+			Status:  "OK",
+			Stats:   *stats,
 			Message: "",
 		})
 	}
@@ -33,10 +32,10 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(HealthStatus{
-			Status: "FAIL",
-			Stats: Stats{},
+			Status:  "FAIL",
+			Stats:   Stats{},
 			Message: err.Error(),
 		})
 
-	} 
+	}
 }

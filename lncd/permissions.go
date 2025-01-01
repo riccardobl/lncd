@@ -18,10 +18,10 @@ var permUriREGEX = regexp.MustCompile("(\\w+)\\.(\\w+)\\.(\\w+)")
 
 type PermissionManager struct {
 	manager *perms.Manager
-	conn *Connection
+	conn    *Connection
 }
 
-func NewPermissionManager(conn* Connection) (*PermissionManager, error) {
+func NewPermissionManager(conn *Connection) (*PermissionManager, error) {
 	permsMgr, err := perms.NewManager(true)
 	if err != nil {
 		return nil, err
@@ -29,7 +29,7 @@ func NewPermissionManager(conn* Connection) (*PermissionManager, error) {
 
 	return &PermissionManager{
 		manager: permsMgr,
-		conn: conn,
+		conn:    conn,
 	}, nil
 }
 
@@ -64,18 +64,18 @@ func (mng *PermissionManager) check(permission string) (bool, error) {
 func extractMacaroonOps(mac *macaroon.Macaroon) ([]*lnrpc.Op, error) {
 	rawID := mac.Id()
 
-    if len(rawID) == 0 {
-        return nil, fmt.Errorf("macaroon ID is empty")
-    }
+	if len(rawID) == 0 {
+		return nil, fmt.Errorf("macaroon ID is empty")
+	}
 
 	if rawID[0] != byte(bakery.LatestVersion) {
 		return nil, fmt.Errorf("invalid macaroon version: %x", rawID)
 	}
-    
+
 	if len(rawID) < 2 {
-        return nil, fmt.Errorf("invalid macaroon ID length")
-    }
-	
+		return nil, fmt.Errorf("invalid macaroon ID length")
+	}
+
 	decodedID := &lnrpc.MacaroonId{}
 	idProto := rawID[1:]
 	err := proto.Unmarshal(idProto, decodedID)
@@ -125,4 +125,3 @@ func hasPermissions(uri string, macOps []*lnrpc.Op,
 
 	return true
 }
-

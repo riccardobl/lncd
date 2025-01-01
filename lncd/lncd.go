@@ -55,19 +55,18 @@ func getEnvAsBool(key string, defaultValue bool) bool {
 	return defaultValue
 }
 
-
 var (
-	LNCD_TIMEOUT                      = getEnvAsDuration("LNCD_TIMEOUT", 5*time.Minute)
-	LNCD_LIMIT_ACTIVE_CONNECTIONS     = getEnvAsInt("LNCD_LIMIT_ACTIVE_CONNECTIONS", 210)
-	LNCD_STATS_INTERVAL               = getEnvAsDuration("LNCD_STATS_INTERVAL", 1*time.Minute)
-	LNCD_DEBUG                        = getEnvAsBool("LNCD_DEBUG", false)
-	LNCD_PORT 		                  = getEnv("LNCD_PORT", "7167")
-	LNCD_HOST 		                  = getEnv("LNCD_HOST", "0.0.0.0")
-	LNCD_AUTH_TOKEN                   = getEnv("LNCD_AUTH_TOKEN", "")
-	LNCD_TLS_CERT_PATH                = getEnv("LNCD_TLS_CERT_PATH", "")
-	LNCD_TLS_KEY_PATH                 = getEnv("LNCD_TLS_KEY_PATH", "")
-	LNCD_HEALTHCHECK_SERVICE_PORT	  = getEnv("LNCD_HEALTHCHECK_SERVICE_PORT", "7168")
-	LNCD_HEALTHCHECK_SERVICE_HOST	  = getEnv("LNCD_HEALTHCHECK_SERVICE_HOST", "127.0.0.1")
+	LNCD_TIMEOUT                  = getEnvAsDuration("LNCD_TIMEOUT", 5*time.Minute)
+	LNCD_LIMIT_ACTIVE_CONNECTIONS = getEnvAsInt("LNCD_LIMIT_ACTIVE_CONNECTIONS", 210)
+	LNCD_STATS_INTERVAL           = getEnvAsDuration("LNCD_STATS_INTERVAL", 1*time.Minute)
+	LNCD_DEBUG                    = getEnvAsBool("LNCD_DEBUG", false)
+	LNCD_PORT                     = getEnv("LNCD_PORT", "7167")
+	LNCD_HOST                     = getEnv("LNCD_HOST", "0.0.0.0")
+	LNCD_AUTH_TOKEN               = getEnv("LNCD_AUTH_TOKEN", "")
+	LNCD_TLS_CERT_PATH            = getEnv("LNCD_TLS_CERT_PATH", "")
+	LNCD_TLS_KEY_PATH             = getEnv("LNCD_TLS_KEY_PATH", "")
+	LNCD_HEALTHCHECK_SERVICE_PORT = getEnv("LNCD_HEALTHCHECK_SERVICE_PORT", "7168")
+	LNCD_HEALTHCHECK_SERVICE_HOST = getEnv("LNCD_HEALTHCHECK_SERVICE_HOST", "127.0.0.1")
 )
 
 // //////////////////////////////
@@ -106,7 +105,7 @@ type Connection struct {
 	registry     map[string]func(context.Context, *grpc.ClientConn, string, func(string, error))
 	pool         *ConnectionPool
 	timeoutTimer *time.Timer
-	perms   	  *PermissionManager
+	perms        *PermissionManager
 }
 
 type ConnectionPool struct {
@@ -123,7 +122,7 @@ type RpcRequest struct {
 type RpcResponse struct {
 	Connection ConnectionInfo
 	Result     string
-	err	       error
+	err        error
 	errCode    int
 }
 
@@ -169,7 +168,7 @@ func NewConnection(pool *ConnectionPool, info ConnectionInfo) (*Connection, erro
 			}
 
 			info.macaroon = mac
-	
+
 			return nil
 		},
 	)
@@ -206,11 +205,11 @@ func NewConnection(pool *ConnectionPool, info ConnectionInfo) (*Connection, erro
 func (conn *Connection) runLoop() {
 	for req := range conn.actions {
 		if req.method == "checkPerms" {
-			log.Debugf("Checking permissions for: %v", req.payload)			
-			perms := []string{};
-			err := json.Unmarshal([]byte(req.payload), &perms);
+			log.Debugf("Checking permissions for: %v", req.payload)
+			perms := []string{}
+			err := json.Unmarshal([]byte(req.payload), &perms)
 			if err != nil {
-				req.onError(err);
+				req.onError(err)
 			} else {
 				var valid []bool = make([]bool, len(perms))
 				for i, perm := range perms {
@@ -244,7 +243,7 @@ func (conn *Connection) runLoop() {
 					} else {
 						req.onResponse(conn.connInfo, resultJSON)
 					}
-				})	
+				})
 			}
 		}
 	}
@@ -314,8 +313,8 @@ func (pool *ConnectionPool) execute(info ConnectionInfo, req Action) {
 
 func writeJSONError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(statusCode)
-    json.NewEncoder(w).Encode(map[string]string{"error": message})
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
 func rpcHandler(pool *ConnectionPool) http.HandlerFunc {
@@ -333,12 +332,11 @@ func rpcHandler(pool *ConnectionPool) http.HandlerFunc {
 			return
 		}
 
-
 		log.Infof("Incoming RPC request: %v", request.Method)
 		if UNSAFE_LOGS {
 			log.Debugf("Full request: %v", request)
 		}
-		
+
 		var waitResponse chan RpcResponse = make(chan RpcResponse)
 
 		pool.execute(request.Connection, Action{
@@ -442,21 +440,21 @@ func parseKeys(localPrivKey, remotePubKey string) (
 }
 
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if LNCD_AUTH_TOKEN != "" {
 			authHeader := r.Header.Get("Authorization")
 			if !strings.HasPrefix(authHeader, "Bearer ") {
 				writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-        	token := strings.TrimPrefix(authHeader, "Bearer ")
-        	if token != LNCD_AUTH_TOKEN {
-            	writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
-            	return
-        	}
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+			if token != LNCD_AUTH_TOKEN {
+				writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 		}
-        next.ServeHTTP(w, r)
-    }
+		next.ServeHTTP(w, r)
+	}
 }
 
 func main() {
@@ -478,7 +476,7 @@ func main() {
 	log.Infof("LNCD_TLS_KEY_PATH: %v", LNCD_TLS_KEY_PATH)
 	log.Infof("LNCD_HEALTHCHECK_SERVICE_PORT: %v", LNCD_HEALTHCHECK_SERVICE_PORT)
 	log.Infof("LNCD_HEALTHCHECK_SERVICE_HOST: %v", LNCD_HEALTHCHECK_SERVICE_HOST)
-	
+
 	if UNSAFE_LOGS {
 		log.Infof("LNCD_AUTH_TOKEN: %v", LNCD_AUTH_TOKEN)
 		log.Infof("!!! UNSAFE LOGGING ENABLED !!!")
@@ -493,7 +491,7 @@ func main() {
 	http.HandleFunc("/", formHandler)
 
 	go func() {
-		log.Infof("Server starting at "+LNCD_HOST+":" + LNCD_PORT)	
+		log.Infof("Server starting at " + LNCD_HOST + ":" + LNCD_PORT)
 		var isTLS = LNCD_TLS_CERT_PATH != "" && LNCD_TLS_KEY_PATH != ""
 		if isTLS {
 			log.Infof("TLS enabled")
@@ -509,19 +507,17 @@ func main() {
 		}
 	}()
 
-	
 	if LNCD_HEALTHCHECK_SERVICE_HOST != "" && LNCD_HEALTHCHECK_SERVICE_PORT != "" {
-        go func() {
-			log.Infof("HealthCheck service starting at "+LNCD_HEALTHCHECK_SERVICE_HOST+":" + LNCD_HEALTHCHECK_SERVICE_PORT)	            
+		go func() {
+			log.Infof("HealthCheck service starting at " + LNCD_HEALTHCHECK_SERVICE_HOST + ":" + LNCD_HEALTHCHECK_SERVICE_PORT)
 			var rawHealthMux *http.ServeMux = http.NewServeMux()
-            rawHealthMux.HandleFunc("/health", healthCheckHandler)
-            if err := http.ListenAndServe(LNCD_HEALTHCHECK_SERVICE_HOST + ":" + LNCD_HEALTHCHECK_SERVICE_PORT, rawHealthMux); err != nil {
-                log.Errorf("Error starting HealthCheck server: %v", err)
-                exit(err)
-            }
-        }()
-    }
-
+			rawHealthMux.HandleFunc("/health", healthCheckHandler)
+			if err := http.ListenAndServe(LNCD_HEALTHCHECK_SERVICE_HOST+":"+LNCD_HEALTHCHECK_SERVICE_PORT, rawHealthMux); err != nil {
+				log.Errorf("Error starting HealthCheck server: %v", err)
+				exit(err)
+			}
+		}()
+	}
 
 	<-shutdownInterceptor.ShutdownChannel()
 	log.Infof("Shutting down daemon")
