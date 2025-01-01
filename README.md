@@ -22,8 +22,10 @@ Configuration options can be specified via environment variables (all are option
 | `LNCD_TLS_KEY_PATH`     | `""`            | Path to the TLS key file (empty to disable TLS).                           |
 | `LNCD_AUTH_TOKEN`       | `""`            | Bearer token required to access the server (empty to disable authentication). |
 | `LNCD_DEV_UNSAFE_LOG`    | `false`         | Enable or disable logging of sensitive data.                       |
-| `LNCD_HEALTHCHECK_SERVICE_PORT`    | `7168`         | Additional healthcheck service port. If LNCD_HEALTHCHECK_SERVICE_PORT and LNCD_HEALTHCHECK_SERVICE_HOST are set, an additional unauthenticated and unencrypted healthcheck service will be started on the specified port and host. |
-| `LNCD_HEALTHCHECK_SERVICE_HOST`    | `127.0.0.1`        | Additional healthcheck service host. If LNCD_HEALTHCHECK_SERVICE_PORT and LNCD_HEALTHCHECK_SERVICE_HOST are set, an additional unauthenticated and unencrypted healthcheck service will be started on the specified port and host. |
+| `LNCD_HEALTHCHECK_SERVICE_PORT`    | `7168`         | Additional healthcheck service port.  |
+| `LNCD_HEALTHCHECK_SERVICE_HOST`    | `127.0.0.1`        | Additional healthcheck service host.  |
+
+If LNCD_HEALTHCHECK_SERVICE_PORT and LNCD_HEALTHCHECK_SERVICE_HOST are set, an additional unauthenticated and unencrypted healthcheck endpoint will be listening on the specified port and host.
 
 
 ## Intended scope
